@@ -32,7 +32,7 @@ import LJ
 # =============================
 
 # Geometry / mode
-MODE = "slab"      # "slab" or "bulk"
+MODE = "bulk"      # "slab" or "bulk"
 
 # --- Slab parameters ---
 CELLS_X = 4        # FCC cells along x (slab)
@@ -44,7 +44,7 @@ LZ = 12.0          # total box height with vacuum (slab)
 CELLS = 6          # FCC cells per axis (bulk)
 
 # --- Common LJ/MD parameters ---
-A = 1.62           # FCC lattice parameter (near LJ minimum ~1.122462)
+A = 1.78           # FCC lattice parameter (near LJ minimum ~1.122462)
 T = 1.0            # temperature (reduced)
 MASS = 1.0         # particle mass
 RC = 2.5           # LJ cutoff
@@ -56,7 +56,7 @@ SEED = None        # RNG seed (or None for random)
 
 # --- Sampling & output ---
 SAMPLE_EVERY = 5                # stride for time-series sampling
-SAVE_DIR = "HW/Final project/data"  # output directory
+SAVE_DIR = "HW/Final project/data/"  # output directory
 SAVE_GRO = SAVE_DIR + "argon_slab.gro" if MODE == "slab" else SAVE_DIR + "argon_bulk.gro"  # or None
 SAVE_THERMO = SAVE_DIR + "thermo_slab.csv" if MODE == "slab" else SAVE_DIR + "thermo_bulk.csv"  # or None
 TITLE = f"Argon-{MODE}"
@@ -72,6 +72,7 @@ SKIN = 0.3         # Verlet skin distance
 
 def run():
     rng = np.random.default_rng(SEED)
+    
 
     if MODE.lower() == "bulk":
         r, v, box = LJ.init_fcc_bulk(n_cells=CELLS, a=A, T=T, mass=MASS, rng=rng)
@@ -84,7 +85,7 @@ def run():
         slab_mode = True
     else:
         raise ValueError("MODE must be 'bulk' or 'slab'")
-
+    r += 1e-6 * rng.normal(size=r.shape)  # avoid initial overlaps
     N = len(r)
     print(f"[info] MODE={MODE}  N={N}  box=({box.Lx:.3f}, {box.Ly:.3f}, {box.Lz:.3f})")
 

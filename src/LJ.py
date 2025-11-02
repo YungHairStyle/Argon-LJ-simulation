@@ -266,6 +266,7 @@ class NeighborList:
     """
 
     def __init__(self, rcut: float, skin: float = 0.3, slab_mode: bool = False):
+        print("init")
         self.rcut = float(rcut)
         self.skin = float(skin)
         self.rlist = float(rcut) + float(skin)
@@ -359,6 +360,8 @@ def forces_energy_LJ(r: np.ndarray, box: Box, nlist: NeighborList, rc: float) ->
     Uc = lj_shift_value(rc)
 
     for i, j, rij, rij2 in nlist.pairs_within_rcut(r, box):
+        if rij2 < 1e-12:      # guard: prevents divide-by-zero
+            continue
         inv2 = 1.0 / rij2
         inv6 = inv2**3
         inv12 = inv6**2
@@ -563,6 +566,8 @@ def pressure_tensor_LJ(r: np.ndarray, v: np.ndarray, box: Box, mass: float,
     # Configurational part: (1/V) sum_{i<j} r_ij ⊗ f_ij
     P_conf = np.zeros((3, 3), dtype=float)
     for i, j, rij, rij2 in nlist.pairs_within_rcut(r, box):
+        if rij2 < 1e-12:      # guard: prevents divide-by-zero
+            continue
         inv2 = 1.0 / rij2
         inv6 = inv2**3
         inv12 = inv6**2
