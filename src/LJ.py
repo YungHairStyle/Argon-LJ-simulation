@@ -1,16 +1,8 @@
 """
 LJ.py
 -----
-A small, fully annotated Lennard–Jones molecular dynamics toolkit
+A small, fully annotated Lennard-Jones molecular dynamics toolkit
 for bulk and slab geometries (argon in LJ reduced units).
-
-Design goals
-============
-- Minimal dependencies (NumPy only).
-- Clear, didactic structure with docstrings and inline comments.
-- Ready to import into a notebook or used by `main.py` as a CLI.
-- Slab geometry: PBC in x,y; open in z. Bulk: 3D PBC.
-- Shifted LJ potential (U(rc)=0). Optional tail corrections for *bulk only*.
 
 Units & Conventions
 ===================
@@ -18,15 +10,12 @@ All quantities are in standard LJ reduced units unless otherwise stated:
 - sigma = 1, epsilon = 1, k_B = 1, particle mass m = 1 (by default).
 - Time step dt is in reduced time units.
 - Temperature T is in epsilon/k_B (so just "1.0" in reduced).
-
-Author: ChatGPT (GPT-5 Thinking)
-License: MIT
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Iterable, Optional, Tuple
+from typing import Callable, Optional, Tuple        #Type hints this allows us to specify the expected data types of variables and function return types
 
 import numpy as np
 
@@ -102,15 +91,15 @@ def wrap_xy(r: np.ndarray, Lx: float, Ly: float) -> np.ndarray:
 # Data containers
 # -----------------------------------------------------------------------------
 
-@dataclass
+@dataclass      #This decorator automatically adds special methods to the class, like __init__ and __repr__ so we dont have to define them
 class Box:
     """Simple container for box lengths."""
-    Lx: float
-    Ly: float
-    Lz: float
+    Lx: float       #Length in x direction
+    Ly: float       #Length in y direction
+    Lz: float       #Length in z direction
 
-    @property
-    def L(self) -> np.ndarray:
+    @property           #This decorator allows us to define methods that can be called like attributes box.L instead of box.L()
+    def L(self) -> np.ndarray:          #The -> np.ndarray does not change anything in the code it just tells the reader that we are returning a ndarray
         return np.array([self.Lx, self.Ly, self.Lz])
 
     @property
@@ -127,12 +116,17 @@ class Box:
 
 def _maxwell_boltzmann_velocities(N: int, T: float, mass: float, rng: np.random.Generator) -> np.ndarray:
     """
-    Draw velocities from the Maxwell–Boltzmann distribution at temperature T.
-    Center-of-mass velocity is removed.
+    Draw velocities from Maxwell–Boltzmann at T.
+    Remove COM, then scale to match T exactly (stable starts).
     """
-    v = rng.normal(0.0, np.sqrt(T / mass), size=(N, 3))
-    v -= v.mean(axis=0, keepdims=True)
+    v = rng.normal(0.0, 1.0, size=(N, 3))
+    v -= v.mean(axis=0, keepdims=True)     # remove COM
+    K = 0.5 * mass * (v*v).sum()
+    Tcur = (2.0 / (3.0 * N)) * K
+    if Tcur > 0:
+        v *= (T / Tcur) ** 0.5
     return v
+
 
 
 def init_fcc_bulk(n_cells: int, a: float, T: float, mass: float = 1.0,
@@ -275,7 +269,7 @@ class NeighborList:
         self.rcut = float(rcut)
         self.skin = float(skin)
         self.rlist = float(rcut) + float(skin)
-        self.list: Optional[list[list[int]]] = None
+        self.list: Optional[list[list[int]]] = None         #Optional meaans it is either a list of list of ints or None. Initialized to None
         self.last_pos: Optional[np.ndarray] = None
         self.slab_mode = bool(slab_mode)
 
@@ -349,7 +343,7 @@ def lj_shift_value(rc: float) -> float:
 
 def forces_energy_LJ(r: np.ndarray, box: Box, nlist: NeighborList, rc: float) -> Tuple[np.ndarray, float]:
     """
-    Compute Lennard–Jones forces and potential energy with a shifted potential.
+    Compute Lennard-Jones forces and potential energy with a shifted potential.
     Assumes reduced units with sigma=1 and epsilon=1.
 
     Returns
@@ -414,7 +408,7 @@ def andersen_thermostat(v: np.ndarray, T: float, mass: float, dt: float,
                         nu: float = 0.1, rng: Optional[np.random.Generator] = None) -> np.ndarray:
     """
     Andersen thermostat: with probability p=1-exp(-nu*dt), a particle's
-    velocity is redrawn from the Maxwell–Boltzmann distribution at T.
+    velocity is redrawn from the Maxwell-Boltzmann distribution at T.
     """
     if rng is None:
         rng = np.random.default_rng()
@@ -436,7 +430,7 @@ def step_velocity_verlet(r: np.ndarray, v: np.ndarray, box: Box, mass: float, dt
                          slab_mode: bool, thermostat: Optional[Callable[[np.ndarray], np.ndarray]] = None
                          ) -> Tuple[np.ndarray, np.ndarray, float, float]:
     """
-    One step of velocity–Verlet with optional thermostat (applied at the end).
+    One step of velocity-Verlet with optional thermostat (applied at the end).
 
     Returns
     -------
@@ -558,7 +552,7 @@ def msd_lateral(unwrap_xy_traj: np.ndarray) -> np.ndarray:
 def pressure_tensor_LJ(r: np.ndarray, v: np.ndarray, box: Box, mass: float,
                        nlist: NeighborList, rc: float) -> np.ndarray:
     """
-    Irving–Kirkwood pressure tensor (instantaneous), including kinetic
+    Pressure tensor (instantaneous), including kinetic
     and configurational (virial) parts.
     """
     vol = box.volume

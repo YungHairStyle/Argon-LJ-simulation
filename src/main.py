@@ -44,20 +44,21 @@ LZ = 12.0          # total box height with vacuum (slab)
 CELLS = 6          # FCC cells per axis (bulk)
 
 # --- Common LJ/MD parameters ---
-A = 2**(1/6)       # FCC lattice parameter (near LJ minimum ~1.122462)
+A = 1.62           # FCC lattice parameter (near LJ minimum ~1.122462)
 T = 1.0            # temperature (reduced)
 MASS = 1.0         # particle mass
 RC = 2.5           # LJ cutoff
-DT = 0.005         # time step
-STEPS = 20000      # total MD steps
-EQUIL_STEPS = 5000 # discard this many steps for averages
-THERMO_NU = 0.1    # Andersen collision frequency; 0 disables thermostat
-SEED = 2025        # RNG seed (or None for random)
+DT = 0.002         # time step
+STEPS = 3000      # total MD steps
+EQUIL_STEPS = 1000 # discard this many steps for averages
+THERMO_NU = 0.2    # Andersen collision frequency; 0 disables thermostat
+SEED = None        # RNG seed (or None for random)
 
 # --- Sampling & output ---
-SAMPLE_EVERY = 10                # stride for time-series sampling
-SAVE_GRO = "argon_slab.gro" if MODE == "slab" else "argon_bulk.gro"  # or None
-SAVE_THERMO = "thermo_slab.csv" if MODE == "slab" else "thermo_bulk.csv"  # or None
+SAMPLE_EVERY = 5                # stride for time-series sampling
+SAVE_DIR = "HW/Final project/data"  # output directory
+SAVE_GRO = SAVE_DIR + "argon_slab.gro" if MODE == "slab" else SAVE_DIR + "argon_bulk.gro"  # or None
+SAVE_THERMO = SAVE_DIR + "thermo_slab.csv" if MODE == "slab" else SAVE_DIR + "thermo_bulk.csv"  # or None
 TITLE = f"Argon-{MODE}"
 
 # --- Neighbor list ---

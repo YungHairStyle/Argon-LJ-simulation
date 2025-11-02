@@ -1,0 +1,15 @@
+{
+  "N": 256,
+  "box": {
+    "Lx": 6.48,
+    "Ly": 6.48,
+    "Lz": 12.0
+  },
+  "rdf_rc": 2.5,
+  "nbins_density": 100,
+  "nbins_rdf": 120,
+  "liquid_window": [
+    0.0,
+    12.0
+  ]
+}
