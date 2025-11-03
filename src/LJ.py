@@ -1,613 +1,273 @@
-"""
-LJ.py
------
-A small, fully annotated Lennard-Jones molecular dynamics toolkit
-for bulk and slab geometries (argon in LJ reduced units).
-
-Units & Conventions
-===================
-All quantities are in standard LJ reduced units unless otherwise stated:
-- sigma = 1, epsilon = 1, k_B = 1, particle mass m = 1 (by default).
-- Time step dt is in reduced time units.
-- Temperature T is in epsilon/k_B (so just "1.0" in reduced).
-"""
-
-from __future__ import annotations
-
-from dataclasses import dataclass
-from typing import Callable, Optional, Tuple        #Type hints this allows us to specify the expected data types of variables and function return types
-
 import numpy as np
+from numpy.random import default_rng
+
+#############################
+# Box & minimum-image tools #
+#############################
+
+def _as_box(L):
+    """Return (Lx, Ly, Lz) given scalar or iterable L."""
+    try:
+        Lx, Ly, Lz = L  # iterable
+        return float(Lx), float(Ly), float(Lz)
+    except Exception:
+        return float(L), float(L), float(L)
 
 
-# -----------------------------------------------------------------------------
-# Geometry helpers
-# -----------------------------------------------------------------------------
-
-def minimum_image_3d(dr: np.ndarray, L: np.ndarray) -> np.ndarray:
+def wrap_positions(pos, L, mode="bulk"):
     """
-    Apply the minimum-image convention in 3D.
-
-    Parameters
-    ----------
-    dr : (M, 3) ndarray
-        Displacement vectors.
-    L : (3,) ndarray
-        Box lengths [Lx, Ly, Lz].
-
-    Returns
-    -------
-    (M, 3) ndarray
-        Displacements mapped into [-L/2, L/2) along each wrapped axis.
+    Wrap particle positions into the simulation cell.
+    - bulk: wrap x,y,z into [0, L)
+    - slab: wrap x,y into [0, Lx/Ly); leave z unchanged
+    pos: (N,3)
+    L: scalar or (Lx, Ly, Lz)
     """
-    out = dr.copy()
-    out -= L * np.rint(out / L)
-    return out
+    Lx, Ly, Lz = _as_box(L)
+    p = np.array(pos, dtype=float, copy=True)
+    # Wrap x,y
+    p[:, 0] -= Lx * np.floor(p[:, 0] / Lx)
+    p[:, 1] -= Ly * np.floor(p[:, 1] / Ly)
+    if mode == "bulk":
+        p[:, 2] -= Lz * np.floor(p[:, 2] / Lz)
+    return p
 
 
-def minimum_image_xy(dr: np.ndarray, Lx: float, Ly: float) -> np.ndarray:
+def minimum_image_disp(drij, L, mode="bulk"):
     """
-    Apply the minimum-image convention only in x and y (slab geometry).
-
-    Parameters
-    ----------
-    dr : (M, 3) ndarray
-        Displacement vectors.
-    Lx, Ly : float
-        Box lengths in x and y.
-
-    Returns
-    -------
-    (M, 3) ndarray
-        x,y components wrapped; z left unchanged.
+    Apply minimum image to displacement vectors.
+    - bulk: componentwise minimum-image in x,y,z
+    - slab: minimum-image only in x,y; z left as is
+    drij: (...,3)
+    L: scalar or (Lx, Ly, Lz)
     """
-    out = dr.copy()
-    out[:, 0] -= Lx * np.rint(out[:, 0] / Lx)
-    out[:, 1] -= Ly * np.rint(out[:, 1] / Ly)
-    # z unchanged
-    return out
+    Lx, Ly, Lz = _as_box(L)
+    d = np.array(drij, dtype=float, copy=True)
+    d[..., 0] -= Lx * np.round(d[..., 0] / Lx)
+    d[..., 1] -= Ly * np.round(d[..., 1] / Ly)
+    if mode == "bulk":
+        d[..., 2] -= Lz * np.round(d[..., 2] / Lz)
+    return d
 
 
-def wrap_3d(r: np.ndarray, L: np.ndarray) -> np.ndarray:
+#############################
+# State construction         #
+#############################
+
+def cubic_lattice(tiling, L):
     """
-    Wrap positions into the primary cell in all three dimensions.
+    Return coordinates on a cubic lattice centered at cell middle.
+    - L: scalar box length; for slab you typically still seed in a cube.
     """
-    out = r.copy()
-    out -= L * np.floor(out / L)
-    return out
+    coords = []
+    for x in range(tiling):
+        for y in range(tiling):
+            for z in range(tiling):
+                coords.append([x, y, z])
+    coord = np.array(coords, dtype=float) / tiling
+    coord -= 0.5
+    return coord * float(L)
 
 
-def wrap_xy(r: np.ndarray, Lx: float, Ly: float) -> np.ndarray:
-    """
-    Wrap positions in x and y; leave z unchanged (slab geometry).
-    """
-    out = r.copy()
-    out[:, 0] -= Lx * np.floor(out[:, 0] / Lx)
-    out[:, 1] -= Ly * np.floor(out[:, 1] / Ly)
-    return out
-
-
-# -----------------------------------------------------------------------------
-# Data containers
-# -----------------------------------------------------------------------------
-
-@dataclass      #This decorator automatically adds special methods to the class, like __init__ and __repr__ so we dont have to define them
-class Box:
-    """Simple container for box lengths."""
-    Lx: float       #Length in x direction
-    Ly: float       #Length in y direction
-    Lz: float       #Length in z direction
-
-    @property           #This decorator allows us to define methods that can be called like attributes box.L instead of box.L()
-    def L(self) -> np.ndarray:          #The -> np.ndarray does not change anything in the code it just tells the reader that we are returning a ndarray
-        return np.array([self.Lx, self.Ly, self.Lz])
-
-    @property
-    def volume(self) -> float:
-        return self.Lx * self.Ly * self.Lz
-
-    def copy(self) -> 'Box':
-        return Box(self.Lx, self.Ly, self.Lz)
-
-
-# -----------------------------------------------------------------------------
-# Initializers
-# -----------------------------------------------------------------------------
-
-def _maxwell_boltzmann_velocities(N: int, T: float, mass: float, rng: np.random.Generator) -> np.ndarray:
-    """
-    Draw velocities from Maxwell–Boltzmann at T.
-    Remove COM, then scale to match T exactly (stable starts).
-    """
-    v = rng.normal(0.0, 1.0, size=(N, 3))
-    v -= v.mean(axis=0, keepdims=True)     # remove COM
-    K = 0.5 * mass * (v*v).sum()
+def initial_velocities(N, m, T):
+    """Maxwell-Boltzmann draw with zero COM and exact temperature."""
+    v = np.random.normal(0.0, 1.0, size=(N, 3))
+    v -= v.mean(axis=0, keepdims=True)
+    K = 0.5 * m * np.einsum("ij,ij->", v, v)
     Tcur = (2.0 / (3.0 * N)) * K
     if Tcur > 0:
-        v *= (T / Tcur) ** 0.5
+        v *= np.sqrt(T / Tcur)
     return v
 
 
+def get_temperature(mass, velocities):
+    N = len(velocities)
+    dof = 3 * N
+    total_vsq = np.einsum("ij,ij", velocities, velocities)
+    return mass * total_vsq / dof
 
-def init_fcc_bulk(n_cells: int, a: float, T: float, mass: float = 1.0,
-                  rng: Optional[np.random.Generator] = None) -> Tuple[np.ndarray, np.ndarray, Box]:
+
+#############################
+# Tables & observables       #
+#############################
+
+def displacement_table(coordinates, L, mode="bulk"):
+    r = np.asarray(coordinates, dtype=float)
+    table = r[:, np.newaxis, :] - r[np.newaxis, :, :]
+    return minimum_image_disp(table, L, mode)
+
+
+def distance_table(disp):
+    return np.linalg.norm(disp, axis=-1)
+
+
+def kinetic(m, v):
+    total_vsq = np.einsum("ij,ij", v, v)
+    return 0.5 * m * total_vsq
+
+
+def potential(dist, rc):
+    """LJ 12-6 with energy shift to zero at rc. All-pairs O(N^2)."""
+    r = np.array(dist, dtype=float, copy=True)
+    n = r.shape[0]
+    r[np.diag_indices(n)] = np.inf
+    # guard tiny
+    r = np.maximum(r, 1e-12)
+    v = 4.0 * (r ** -12 - r ** -6)
+    vc = 4.0 * (rc ** -12 - rc ** -6)
+    v[r < rc] -= vc  # shift
+    v[r >= rc] = 0.0
+    return 0.5 * np.sum(v)
+
+
+def force(disp, dist, rc):
     """
-    Build a cubic FCC crystal with 3D PBC (bulk).
-
-    Parameters
-    ----------
-    n_cells : int
-        Number of FCC cells along each axis.
-    a : float
-        Lattice parameter (spacing) in reduced units.
-    T : float
-        Initial temperature.
-    mass : float, default=1.0
-        Particle mass.
-    rng : np.random.Generator, optional
-        RNG for velocities. If None, a default RNG is used.
-
-    Returns
-    -------
-    r : (N, 3) ndarray
-        Particle positions.
-    v : (N, 3) ndarray
-        Particle velocities.
-    box : Box
-        Simulation box.
+    Compute LJ forces from displacement & distance tables.
+    Returns (N,3).
     """
-    if rng is None:
-        rng = np.random.default_rng()
-
-    # FCC basis (fractional)
-    basis = np.array([[0, 0, 0],
-                      [0.5, 0.5, 0],
-                      [0.5, 0, 0.5],
-                      [0, 0.5, 0.5]])
-
-    pts = []
-    for ix in range(n_cells):
-        for iy in range(n_cells):
-            for iz in range(n_cells):
-                cell = a * np.array([ix, iy, iz], dtype=float)
-                pts.extend(cell + a * basis)
-    r = np.asarray(pts, dtype=float)
-    N = r.shape[0]
-
-    # Define box
-    Lx = Ly = Lz = n_cells * a
-    box = Box(Lx, Ly, Lz)
-
-    # Velocities
-    v = _maxwell_boltzmann_velocities(N, T, mass, rng)
-    return r, v, box
+    r = np.array(dist, dtype=float, copy=True)
+    n = r.shape[0]
+    r[np.diag_indices(n)] = np.inf
+    r = np.maximum(r, 1e-12)
+    # |F| = 24*(2/r^14 - 1/r^8)
+    mag = 24.0 * (2.0 / r ** 14 - 1.0 / r ** 8)
+    mag[r >= rc] = 0.0
+    f = np.sum(mag[:, :, None] * disp, axis=1)
+    return f
 
 
-def init_fcc_slab(n_cells_x: int, n_cells_y: int, n_layers_z: int,
-                  a: float, Lz: float, T: float, mass: float = 1.0,
-                  rng: Optional[np.random.Generator] = None) -> Tuple[np.ndarray, np.ndarray, Box]:
+def advance(pos, vel, mass, dt, disp, dist, rc, L, mode="bulk"):
+    """Velocity-Verlet step with variable box style (bulk/slab)."""
+    acc = force(disp, dist, rc) / mass
+    v_half = vel + 0.5 * dt * acc
+    pos_new = pos + dt * v_half
+    pos_new = wrap_positions(pos_new, L, mode)
+    disp_new = displacement_table(pos_new, L, mode)
+    dist_new = distance_table(disp_new)
+    # avoid zero distances in next force call
+    dist_new = np.maximum(dist_new, 1e-12)
+    acc_new = force(disp_new, dist_new, rc) / mass
+    v_new = v_half + 0.5 * dt * acc_new
+    return pos_new, v_new, disp_new, dist_new
+
+
+#############################
+# g(r), S(k), k-vectors     #
+#############################
+
+def pair_correlation(dists, natom, nbins, dr, L):
+    """Pair correlation g(r) using ideal-gas normalization.
+    L can be scalar or (Lx, Ly, Lz) for volume.
     """
-    Build an FCC slab (stacked in z) inside a taller box with vacuum.
-    PBC in x,y; open in z.
-
-    The slab is centered along z.
-
-    Parameters
-    ----------
-    n_cells_x, n_cells_y : int
-        Number of FCC unit cells along x and y.
-    n_layers_z : int
-        Number of FCC unit-cell layers stacked in z.
-    a : float
-        FCC lattice parameter.
-    Lz : float
-        Total box height (includes vacuum).
-    T : float
-        Initial temperature.
-    mass : float, default=1.0
-        Particle mass.
-    rng : np.random.Generator, optional
-        RNG for velocities.
-
-    Returns
-    -------
-    r, v, box : tuple
-        Positions, velocities, and Box.
-    """
-    if rng is None:
-        rng = np.random.default_rng()
-
-    basis = np.array([[0, 0, 0],
-                      [0.5, 0.5, 0],
-                      [0.5, 0, 0.5],
-                      [0, 0.5, 0.5]])
-
-    pts = []
-    for ix in range(n_cells_x):
-        for iy in range(n_cells_y):
-            for iz in range(n_layers_z):
-                cell = a * np.array([ix, iy, iz], dtype=float)
-                pts.extend(cell + a * basis)
-    r = np.asarray(pts, dtype=float)
-    N = r.shape[0]
-
-    # Lateral box
-    Lx = n_cells_x * a
-    Ly = n_cells_y * a
-
-    # Center the slab along z
-    slab_height = n_layers_z * a
-    z0 = 0.5 * (Lz - slab_height)  # lower bound of slab
-    r[:, 2] = r[:, 2] - r[:, 2].min() + z0
-
-    box = Box(Lx, Ly, Lz)
-
-    # Velocities
-    v = _maxwell_boltzmann_velocities(N, T, mass, rng)
-    return r, v, box
-
-
-# -----------------------------------------------------------------------------
-# Neighbor list
-# -----------------------------------------------------------------------------
-
-class NeighborList:
-    """
-    Verlet neighbor list with a skin, supporting slab (2D PBC) or bulk (3D PBC).
-
-    Parameters
-    ----------
-    rcut : float
-        Force cutoff.
-    skin : float, default=0.3
-        Additional buffer distance for the neighbor list.
-    slab_mode : bool, default=False
-        If True, use 2D PBC (x,y) only; z is open.
-    """
-
-    def __init__(self, rcut: float, skin: float = 0.3, slab_mode: bool = False):
-        print("init")
-        self.rcut = float(rcut)
-        self.skin = float(skin)
-        self.rlist = float(rcut) + float(skin)
-        self.list: Optional[list[list[int]]] = None         #Optional meaans it is either a list of list of ints or None. Initialized to None
-        self.last_pos: Optional[np.ndarray] = None
-        self.slab_mode = bool(slab_mode)
-
-    def _wrap_displacements(self, dr: np.ndarray, box: Box) -> np.ndarray:
-        if self.slab_mode:
-            return minimum_image_xy(dr, box.Lx, box.Ly)
-        return minimum_image_3d(dr, box.L)
-
-    def needs_rebuild(self, r: np.ndarray, box: Box) -> bool:
-        """
-        Rebuild when any particle moved more than half the skin distance
-        since the previous build.
-        """
-        if self.last_pos is None:
-            return True
-        dr = r - self.last_pos
-        if self.slab_mode:
-            dr = minimum_image_xy(dr, box.Lx, box.Ly)
-        else:
-            dr = minimum_image_3d(dr, box.L)
-        max_disp2 = np.max(np.sum(dr * dr, axis=1))
-        return max_disp2 > (0.5 * (self.rlist - self.rcut))**2
-
-    def build(self, r: np.ndarray, box: Box) -> None:
-        """
-        Construct the neighbor list for the current positions.
-        """
-        N = len(r)
-        self.list = [[] for _ in range(N)]
-        for i in range(N - 1):
-            dr = r[i + 1:] - r[i]
-            dr = self._wrap_displacements(dr, box)
-            rij2 = np.einsum("ij,ij->i", dr, dr)
-            mask = rij2 < self.rlist**2
-            js = np.nonzero(mask)[0] + (i + 1)
-            for j in js:
-                self.list[i].append(int(j))
-        self.last_pos = r.copy()
-
-    def pairs_within_rcut(self, r: np.ndarray, box: Box):
-        """
-        Yield (i, j, rij_vec, rij2) for each pair within rcut.
-        """
-        assert self.list is not None, "Neighbor list not built yet."
-        rc2 = self.rcut * self.rcut
-        for i, js in enumerate(self.list):
-            if not js:
-                continue
-            dr = r[js] - r[i]
-            dr = self._wrap_displacements(dr, box)
-            rij2 = np.einsum("ij,ij->i", dr, dr)
-            mask = rij2 < rc2
-            for j, vec, d2 in zip(np.array(js)[mask], dr[mask], rij2[mask]):
-                yield i, int(j), vec, float(d2)
-
-
-# -----------------------------------------------------------------------------
-# Lennard–Jones potential and forces
-# -----------------------------------------------------------------------------
-
-def lj_shift_value(rc: float) -> float:
-    """
-    Energy shift so that U(rc) = 0 for the standard 12-6 LJ:
-        U(r) = 4 * (r^-12 - r^-6) - U(rc)
-    """
-    inv2 = 1.0 / (rc * rc)
-    inv6 = inv2**3
-    inv12 = inv6**2
-    return 4.0 * (inv12 - inv6)
-
-
-def forces_energy_LJ(r: np.ndarray, box: Box, nlist: NeighborList, rc: float) -> Tuple[np.ndarray, float]:
-    """
-    Compute Lennard-Jones forces and potential energy with a shifted potential.
-    Assumes reduced units with sigma=1 and epsilon=1.
-
-    Returns
-    -------
-    F : (N,3) ndarray
-        Forces.
-    U : float
-        Total potential energy.
-    """
-    N = len(r)
-    F = np.zeros_like(r)
-    U = 0.0
-    Uc = lj_shift_value(rc)
-
-    for i, j, rij, rij2 in nlist.pairs_within_rcut(r, box):
-        if rij2 < 1e-12:      # guard: prevents divide-by-zero
-            continue
-        inv2 = 1.0 / rij2
-        inv6 = inv2**3
-        inv12 = inv6**2
-
-        # Potential (shifted)
-        U_ij = 4.0 * (inv12 - inv6) - Uc
-        U += U_ij
-
-        # Force: F = 24 * (2 r^-14 - r^-8) * r_vec
-        pref = 24.0 * (2.0 * inv12 - inv6) * inv2
-        fij = pref * rij
-        F[i] += fij
-        F[j] -= fij
-
-    return F, U
-
-
-def bulk_tail_corrections(rho: float, rc: float) -> Tuple[float, float]:
-    """
-    Lennard–Jones long-range (tail) corrections for bulk systems.
-
-    Parameters
-    ----------
-    rho : float
-        Number density (N / V).
-    rc : float
-        Cutoff radius.
-
-    Returns
-    -------
-    Utail_per_particle, Ptail : tuple of floats
-        Potential energy tail per particle and pressure tail.
-    """
-    # Standard formulae for 12-6 LJ in 3D bulk with isotropy
-    rc3 = rc**3
-    rc9 = rc**9
-    U_tail = (8.0 * np.pi * rho / 3.0) * ( (1.0 / (3.0 * rc9)) - (1.0 / rc3) )
-    P_tail = (16.0 * np.pi * rho**2 / 3.0) * ( (2.0 / (3.0 * rc9)) - (1.0 / rc3) )
-    return U_tail, P_tail
-
-
-# -----------------------------------------------------------------------------
-# Thermostats
-# -----------------------------------------------------------------------------
-
-def andersen_thermostat(v: np.ndarray, T: float, mass: float, dt: float,
-                        nu: float = 0.1, rng: Optional[np.random.Generator] = None) -> np.ndarray:
-    """
-    Andersen thermostat: with probability p=1-exp(-nu*dt), a particle's
-    velocity is redrawn from the Maxwell-Boltzmann distribution at T.
-    """
-    if rng is None:
-        rng = np.random.default_rng()
-    p = 1.0 - np.exp(-nu * dt)
-    mask = rng.random(len(v)) < p
-    if np.any(mask):
-        v[mask] = np.random.default_rng().normal(0.0, np.sqrt(T / mass), size=(mask.sum(), 3))
-        # keep overall COM approximately small by removing mean drift every call
-    v -= v.mean(axis=0, keepdims=True)
-    return v
-
-
-# -----------------------------------------------------------------------------
-# Integrator
-# -----------------------------------------------------------------------------
-
-def step_velocity_verlet(r: np.ndarray, v: np.ndarray, box: Box, mass: float, dt: float,
-                         nlist: NeighborList, rc: float,
-                         slab_mode: bool, thermostat: Optional[Callable[[np.ndarray], np.ndarray]] = None
-                         ) -> Tuple[np.ndarray, np.ndarray, float, float]:
-    """
-    One step of velocity-Verlet with optional thermostat (applied at the end).
-
-    Returns
-    -------
-    r, v, U, K : tuple
-        Updated positions, velocities, potential and kinetic energies.
-    """
-    # Evaluate forces at t
-    F, U = forces_energy_LJ(r, box, nlist, rc)
-
-    # v(t+dt/2)
-    v += 0.5 * dt * F / mass
-
-    # r(t+dt)
-    r += dt * v
-    if slab_mode:
-        r = wrap_xy(r, box.Lx, box.Ly)
-    else:
-        r = wrap_3d(r, box.L)
-
-    # Rebuild neighbor list if needed
-    if nlist.needs_rebuild(r, box):
-        nlist.build(r, box)
-
-    # Forces at t+dt
-    F, U = forces_energy_LJ(r, box, nlist, rc)
-
-    # v(t+dt)
-    v += 0.5 * dt * F / mass
-
-    # Thermostat (optional)
-    if thermostat is not None:
-        v = thermostat(v)
-
-    # Kinetic energy
-    K = 0.5 * mass * np.sum(v * v)
-    return r, v, U, K
-
-
-# -----------------------------------------------------------------------------
-# Analysis
-# -----------------------------------------------------------------------------
-
-def instantaneous_temperature(v: np.ndarray, mass: float) -> float:
-    """
-    Compute instantaneous temperature using equipartition:
-        K = (3/2) N k_B T  with k_B=1 in reduced units.
-    """
-    N = len(v)
-    K = 0.5 * mass * np.sum(v * v)
-    return (2.0 / (3.0 * N)) * K
-
-
-def density_profile_z(r: np.ndarray, Lz: float, nbins: int = 100) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Histogram number density along z.
-    Returns bin centers and number-per-unit-length ρ(z).
-    """
-    z = r[:, 2]
-    hist, edges = np.histogram(z, bins=nbins, range=(0.0, Lz))
-    dz = edges[1] - edges[0]
-    rho_z = hist.astype(float) / dz  # number per unit length
-    centers = 0.5 * (edges[:-1] + edges[1:])
-    return centers, rho_z
-
-
-def rdf_inplane(r: np.ndarray, box: Box, rc: float, nbins: int = 100,
-                z_window: Optional[Tuple[float, float]] = None) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    In-plane radial distribution function g_||(r) using only x,y separations.
-    If z_window=(zmin, zmax) is given, restrict atoms to that z range.
-    """
-    sel = np.ones(len(r), dtype=bool)
-    if z_window is not None:
-        zmin, zmax = z_window
-        sel = (r[:, 2] >= zmin) & (r[:, 2] < zmax)
-
-    pos = r[sel]
-    N = len(pos)
-    if N < 2:
-        return np.linspace(0, rc, nbins), np.zeros(nbins)
-
-    dists = []
-    for i in range(N - 1):
-        dr = pos[i + 1:, :2] - pos[i, :2]
-        dr[:, 0] -= box.Lx * np.rint(dr[:, 0] / box.Lx)
-        dr[:, 1] -= box.Ly * np.rint(dr[:, 1] / box.Ly)
-        rij = np.sqrt(np.einsum("ij,ij->i", dr, dr))
-        dists.append(rij)
-    rvals = np.concatenate(dists) if dists else np.array([])
-
-    hist, edges = np.histogram(rvals, bins=nbins, range=(0, rc))
-    r_centers = 0.5 * (edges[:-1] + edges[1:])
-    dr = edges[1] - edges[0]
-
-    area = box.Lx * box.Ly
-    rho2D = N / area
-    shell_area = 2.0 * np.pi * r_centers * dr
-    with np.errstate(divide='ignore', invalid='ignore'):
-        g = hist / (rho2D * N * shell_area)
+    Lx, Ly, Lz = _as_box(L)
+    Omega = Lx * Ly * Lz
+    hist, edges = np.histogram(dists, bins=nbins, range=(0.0, nbins * dr))
+    r = (edges[:-1] + edges[1:]) * 0.5
+    dOmega = (4.0 * np.pi / 3.0) * ((r + 0.5 * dr) ** 3 - (r - 0.5 * dr) ** 3)
+    ideal = ((natom - 1) / 2.0) * (natom / Omega) * dOmega
+    with np.errstate(divide="ignore", invalid="ignore"):
+        g = hist / ideal
         g = np.nan_to_num(g, nan=0.0, posinf=0.0, neginf=0.0)
-    return r_centers, g
+    return g, r
 
 
-def msd_lateral(unwrap_xy_traj: np.ndarray) -> np.ndarray:
-    """
-    Lateral mean-squared displacement from an unwrapped x,y trajectory.
-    unwrap_xy_traj: shape (T, N, 2)
-    Returns msd[tau] averaged over particles and origins.
-    """
-    X = unwrap_xy_traj  # (T,N,2)
-    T = X.shape[0]
-    msd = np.zeros(T, dtype=float)
-    for tau in range(T):
-        disp = X[tau:] - X[:T - tau]
-        msd[tau] = np.mean(np.sum(disp * disp, axis=2))
-    return msd
+def calc_rhok(kvecs, pos):
+    arg = kvecs @ pos.T
+    return np.exp(-1j * arg).sum(axis=1)
 
 
-def pressure_tensor_LJ(r: np.ndarray, v: np.ndarray, box: Box, mass: float,
-                       nlist: NeighborList, rc: float) -> np.ndarray:
-    """
-    Pressure tensor (instantaneous), including kinetic
-    and configurational (virial) parts.
-    """
-    vol = box.volume
-
-    # Kinetic contribution: P_kin = (m/V) sum_n v_n \otimes v_n
-    P_kin = (mass / vol) * np.einsum("ni,nj->ij", v, v)
-
-    # Configurational part: (1/V) sum_{i<j} r_ij ⊗ f_ij
-    P_conf = np.zeros((3, 3), dtype=float)
-    for i, j, rij, rij2 in nlist.pairs_within_rcut(r, box):
-        if rij2 < 1e-12:      # guard: prevents divide-by-zero
-            continue
-        inv2 = 1.0 / rij2
-        inv6 = inv2**3
-        inv12 = inv6**2
-        pref = 24.0 * (2.0 * inv12 - inv6) * inv2
-        fij = pref * rij  # force on i by j
-        P_conf += np.outer(rij, fij)
-    P_conf /= vol
-
-    # Each pair counted once -> factor 1/2 for symmetric virial
-    P = P_kin + 0.5 * P_conf
-    return P
+def calc_sk(kvecs, pos):
+    rho_k = calc_rhok(kvecs, pos)
+    rho_mk = calc_rhok(-kvecs, pos)
+    N = pos.shape[0]
+    return (rho_k * rho_mk) / N
 
 
-def surface_tension_gamma(P: np.ndarray, Lz: float) -> float:
-    """
-    Estimate surface tension for a slab:
-        gamma = (Lz/2) * (P_zz - 0.5*(P_xx + P_yy))
-    """
-    return 0.5 * Lz * (P[2, 2] - 0.5 * (P[0, 0] + P[1, 1]))
+def calc_av_sk(kvecs, pos):
+    sk = np.real(calc_sk(kvecs, pos))
+    nk = np.linalg.norm(kvecs, axis=1)
+    uniq, inv = np.unique(np.round(nk, 12), return_inverse=True)
+    av = np.zeros(len(uniq))
+    for i in range(len(uniq)):
+        av[i] = np.mean(sk[inv == i])
+    return uniq, av
 
 
-# -----------------------------------------------------------------------------
-# I/O helpers
-# -----------------------------------------------------------------------------
+def legal_kvecs(maxn, L):
+    Lx, Ly, Lz = _as_box(L)
+    grid = np.arange(-maxn, maxn + 1)
+    k = np.array([(i, j, k) for i in grid for j in grid for k in grid], dtype=float)
+    k[:, 0] *= 2.0 * np.pi / Lx
+    k[:, 1] *= 2.0 * np.pi / Ly
+    k[:, 2] *= 2.0 * np.pi / Lz
+    return k
 
-def write_gro(filename: str, r: np.ndarray, box: Box,
-              title: str = "Argon", write_velocities: bool = False,
-              v: Optional[np.ndarray] = None) -> None:
-    """
-    Write a minimal .gro file. If you need real units (nm), convert before calling.
-    """
-    with open(filename, "w") as f:
-        f.write(f"{title}\n")
-        f.write(f"{len(r):5d}\n")
-        for i, pos in enumerate(r, start=1):
-            if write_velocities and v is not None:
-                f.write(f"{1:5d}{'AR':>5s}{'Ar':>5s}{i:5d}"
-                        f"{pos[0]:8.3f}{pos[1]:8.3f}{pos[2]:8.3f}"
-                        f"{v[i-1,0]:8.4f}{v[i-1,1]:8.4f}{v[i-1,2]:8.4f}\n")
-            else:
-                f.write(f"{1:5d}{'AR':>5s}{'Ar':>5s}{i:5d}"
-                        f"{pos[0]:8.3f}{pos[1]:8.3f}{pos[2]:8.3f}\n")
-        f.write(f"{box.Lx:10.5f}{box.Ly:10.5f}{box.Lz:10.5f}\n")
+
+#############################
+# Thermostats                #
+#############################
+
+def thermostat_andersen(v, m, T, dt, nu):
+    """Andersen thermostat: resample with prob p = 1-exp(-nu*dt)."""
+    rng = default_rng()
+    p = 1.0 - np.exp(-nu * dt)
+    N, ndim = v.shape
+    mask = rng.random(N) < p
+    v_new = v.copy()
+    v_new[mask, :] = rng.normal(0.0, np.sqrt(T / m), size=(mask.sum(), ndim))
+    # remove COM drift
+    v_new -= v_new.mean(axis=0, keepdims=True)
+    return v_new
+
+
+def thermostat_stochastic(v, m, T, prob):
+    """Simple per-particle resampling used in earlier versions."""
+    rng = default_rng()
+    N, ndim = v.shape
+    v_new = v.copy()
+    mask = rng.random(N) < prob
+    v_new[mask, :] = rng.normal(0.0, np.sqrt(T / m), size=(mask.sum(), ndim))
+    return v_new
+
+
+#############################
+# Distances utility (O(N^2)) #
+#############################
+
+def my_disp_in_box(drij, L, mode="bulk"):
+    """Compatibility helper: same behavior as minimum_image_disp."""
+    return minimum_image_disp(drij, L, mode)
+
+
+def all_dists(pos, L, mode="bulk"):
+    N = pos.shape[0]
+    dists = np.zeros(N * (N - 1) // 2, dtype=float)
+    cur = 0
+    for i in range(N):
+        for j in range(i + 1, N):
+            dr = pos[i] - pos[j]
+            dr = minimum_image_disp(dr, L, mode)
+            dists[cur] = np.linalg.norm(dr)
+            cur += 1
+    return dists
+
+
+#############################
+# Statistics                 #
+#############################
+
+def block_average(tseries, nblocks=5):
+    tseries = np.asarray(tseries)
+    if tseries.ndim == 1:
+        tseries = tseries[:, None]
+    T, M = tseries.shape
+    blocklen = int(T / nblocks)
+    if blocklen < 1:
+        raise ValueError("Not enough samples for the requested number of blocks")
+    means = np.zeros((nblocks, M))
+    for i in range(nblocks - 1):
+        means[i, :] = tseries[i * blocklen : (i + 1) * blocklen, :].mean(axis=0)
+    # last block is the tail starting at (nblocks-1)*blocklen
+    means[nblocks - 1, :] = tseries[(nblocks - 1) * blocklen :, :].mean(axis=0)
+    mean = means.mean(axis=0)
+    err = means.std(axis=0, ddof=1) / np.sqrt(nblocks)
+    return mean, err

@@ -12,11 +12,11 @@
     "stats": {
       "samples_total": 600,
       "burn_in_dropped": 120,
-      "T_mean_eq": 9.67938325867449e+85,
-      "T_std_eq": 9.385911283572126e+77,
-      "E_pot_mean_eq": 4.6912496106837526e+36,
-      "E_kin_mean_eq": 1.254448070324214e+89,
-      "E_tot_mean_eq": 1.254448070324214e+89
+      "T_mean_eq": 0.7512221742571145,
+      "T_std_eq": 0.04095490866668928,
+      "E_pot_mean_eq": -3794.283451641605,
+      "E_kin_mean_eq": 973.5839378372203,
+      "E_tot_mean_eq": -2820.6995138043844
     }
   },
   "rdf": "HW/Final project/figures/bulk/rdf.svg"

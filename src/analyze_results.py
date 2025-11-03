@@ -57,7 +57,7 @@ def ensure_dir(path: Path) -> None:
 
 import re
 
-def read_gro(path: Path) -> Tuple[np.ndarray, LJ.Box]:
+def read_gro(path: Path) -> Tuple[np.ndarray, LJ.Box]: 
     """
     Robust .gro reader: extracts x,y,z from the first three floats on each atom line.
     Works whether velocities are present or not.

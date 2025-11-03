@@ -12,17 +12,17 @@
     "stats": {
       "samples_total": 600,
       "burn_in_dropped": 120,
-      "T_mean_eq": 2.7597951598907675e+28,
-      "T_std_eq": 2.043718966115521e+27,
-      "E_pot_mean_eq": 9237.843433971702,
-      "E_kin_mean_eq": 1.0597613413980546e+31,
-      "E_tot_mean_eq": 1.0597613413980546e+31
+      "T_mean_eq": 0.7604733384572568,
+      "T_std_eq": 0.025803923635288554,
+      "E_pot_mean_eq": -1029.4811561449262,
+      "E_kin_mean_eq": 292.02176196758666,
+      "E_tot_mean_eq": -737.4593941773395
     }
   },
   "density_z": "HW/Final project/figures/slab/density_z.svg",
   "rdf": "HW/Final project/figures/slab/rdf.svg",
   "rdf_window": [
-    2.5,
-    3.2
+    5.7,
+    5.9
   ]
 }
