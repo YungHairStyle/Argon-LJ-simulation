@@ -12,10 +12,10 @@ Features
 
 Usage
 -----
-python analyze_results.py \
+python analyze.py \
   --mode bulk \
-  --data_dir "HW/Final project/data" \
-  --out_dir  "HW/Final project/figs" \
+  --data_dir "/path/to/data/" \
+  --out_dir  "/output/path" \
   --rc 2.5 \
   --nbins 120 \
   --dr 0.02 \

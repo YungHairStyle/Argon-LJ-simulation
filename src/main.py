@@ -11,7 +11,7 @@ Copy this next to md_core_merged.py and run:  python main_merged.py
 from __future__ import annotations
 import csv, time
 import numpy as np
-import LJ2 as core
+import LJ as core
 
 # =============================
 # Configuration (edit these)
@@ -40,7 +40,7 @@ SEED = None        # RNG seed (or None for random)
 
 # --- Sampling & output ---
 SAMPLE_EVERY = 5
-SAVE_DIR = "HW/Final project/data/"
+SAVE_DIR = "HW/Final project/data/"         # Output directory 
 SAVE_GRO = SAVE_DIR + ("argon_slab.gro" if MODE == "slab" else "argon_bulk.gro")
 SAVE_THERMO = SAVE_DIR + ("thermo_slab.csv" if MODE == "slab" else "thermo_bulk.csv")
 TITLE = f"Argon-{MODE}"
