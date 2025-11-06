@@ -36,7 +36,7 @@ import LJ
 # -----------------------
 MODE = "slab"  # "slab" or "bulk"
 DATA_DIR_DEFAULT = Path("HW/Final project/data")        #change this to your input data path
-OUT_ROOT_DEFAULT = Path("HW/Final project/figures")     #change this to your desired output path
+OUT_ROOT_DEFAULT = Path("HW/Final project/figures/analyze_results/")     #change this to your desired output path
 
 # -----------------------
 # Load local LJ.py (same folder as this script)

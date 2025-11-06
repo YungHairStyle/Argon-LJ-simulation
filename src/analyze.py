@@ -34,6 +34,13 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from typing import Tuple
+#------------------------------------------------------------------
+#------------------------------------------------------------------
+# Global settings
+slab = False  # Global flag for slab vs bulk mode
+#------------------------------------------------------------------
+#------------------------------------------------------------------
+
 
 # ---- Core helpers (mirrors md_core_merged) ----
 
@@ -152,9 +159,7 @@ def savefig(out_dir: str, stem: str):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--mode", choices=["bulk", "slab"], default="bulk")
-    ap.add_argument("--data_dir", required=True)
-    ap.add_argument("--out_dir", required=True)
+    ap.add_argument("--out_dir", type=str, default="Final project/figures/analyze", help="Output directory for plots and summary")
     ap.add_argument("--rc", type=float, default=2.5)
     ap.add_argument("--nbins", type=int, default=120)
     ap.add_argument("--dr", type=float, default=0.02)
@@ -162,11 +167,10 @@ def main():
     ap.add_argument("--inplane", action="store_true", help="Use in-plane (x,y) distances for slab g(r)")
     args = ap.parse_args()
 
-    thermo_name = "thermo_slab.csv" if args.mode == "slab" else "thermo_bulk.csv"
-    gro_name    = "argon_slab.gro"   if args.mode == "slab" else "argon_bulk.gro"
 
-    thermo_path = os.path.join(args.data_dir, thermo_name)
-    gro_path    = os.path.join(args.data_dir, gro_name)
+
+    thermo_path = "Final project/data/thermo_slab.csv" if slab else "Final project/data/thermo_bulk.csv"
+    gro_path    = "Final project/data/argon_slab.gro"  if slab else "Final project/data/argon_bulk.gro"
 
     # --- Load thermo and plot ---
     th = read_thermo_csv(thermo_path)
@@ -197,7 +201,7 @@ def main():
     title, pos, box = read_gro(gro_path)
 
     # --- g(r) ---
-    if args.inplane and args.mode == "slab":
+    if slab and args.inplane:
         # In-plane distances only
         rij = displacement_table(pos[:, :2], (box[0], box[1], 1.0), mode="bulk")  # 2D trick with Lz=1
         dij = np.linalg.norm(rij, axis=-1)
