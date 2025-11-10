@@ -1,0 +1,23 @@
+{
+  "mode": "bulk",
+  "inputs": {
+    "thermo_csv": "HW/Final project/data/thermo_bulk.csv",
+    "gro": "HW/Final project/data/argon_bulk.gro"
+  },
+  "time_series": {
+    "temperature": "HW/Final project/figures/bulk/temperature.svg",
+    "energies": "HW/Final project/figures/bulk/energies.svg",
+    "energy_smooth": "HW/Final project/figures/bulk/energy_smooth.svg",
+    "temp_hist": "HW/Final project/figures/bulk/temp_hist.svg",
+    "stats": {
+      "samples_total": 600,
+      "burn_in_dropped": 120,
+      "T_mean_eq": 0.7512221742571145,
+      "T_std_eq": 0.04095490866668928,
+      "E_pot_mean_eq": -3794.283451641605,
+      "E_kin_mean_eq": 973.5839378372203,
+      "E_tot_mean_eq": -2820.6995138043844
+    }
+  },
+  "rdf": "HW/Final project/figures/bulk/rdf.svg"
+}
