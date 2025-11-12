@@ -159,7 +159,8 @@ def savefig(out_dir: str, stem: str):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--out_dir", type=str, default="Final project/figures/analyze", help="Output directory for plots and summary")
+    ap.add_argument("--mode", type=str)
+    ap.add_argument("--out_dir", type=str, default="C:/Users/Alex/OneDrive - Concordia University - Canada/phys440/project/Argon-LJ-simulation/figures/analyze", help="Output directory for plots and summary")
     ap.add_argument("--rc", type=float, default=2.5)
     ap.add_argument("--nbins", type=int, default=120)
     ap.add_argument("--dr", type=float, default=0.02)
@@ -169,8 +170,8 @@ def main():
 
 
 
-    thermo_path = "Final project/data/thermo_slab.csv" if slab else "Final project/data/thermo_bulk.csv"
-    gro_path    = "Final project/data/argon_slab.gro"  if slab else "Final project/data/argon_bulk.gro"
+    thermo_path = "" if slab else ""
+    gro_path    = ""  if slab else ""
 
     # --- Load thermo and plot ---
     th = read_thermo_csv(thermo_path)
@@ -227,6 +228,7 @@ def main():
     plt.figure()
     plt.plot(kmod, avsk)
     plt.xlabel("|k|")
+    plt.xlim(0,10)
     plt.ylabel("S(|k|)")
     plt.title("Shell-averaged static structure factor")
     savefig(args.out_dir, f"Sk_{args.mode}")

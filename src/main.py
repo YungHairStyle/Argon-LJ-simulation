@@ -16,7 +16,7 @@ import LJ as core
 # =============================
 # Configuration (edit these)
 # =============================
-MODE = "slab"      # "slab" or "bulk"
+MODE = "bulk"      # "slab" or "bulk"
 
 # --- Slab parameters ---
 CELLS_X = 4        # FCC cells along x (slab)
@@ -35,12 +35,12 @@ RC = 2.5           # LJ cutoff
 DT = 0.002         # time step
 STEPS = 3000       # total MD steps
 EQUIL_STEPS = 1000 # discard this many steps for averages
-THERMO_NU = 0.2    # Andersen collision frequency; 0 disables thermostat
+PROB = 0.2    # Andersen collision frequency; 0 disables thermostat
 SEED = None        # RNG seed (or None for random)
 
 # --- Sampling & output ---
 SAMPLE_EVERY = 5
-SAVE_DIR = "HW/Final project/data/"         # Output directory 
+SAVE_DIR =    ""    # Output directory 
 SAVE_GRO = SAVE_DIR + ("argon_slab.gro" if MODE == "slab" else "argon_bulk.gro")
 SAVE_THERMO = SAVE_DIR + ("thermo_slab.csv" if MODE == "slab" else "thermo_bulk.csv")
 TITLE = f"Argon-{MODE}"
@@ -135,8 +135,8 @@ def run():
 
     # Optional thermostat function
     def apply_thermostat(vv):
-        if THERMO_NU and THERMO_NU > 0.0:
-            return core.thermostat_andersen(vv, MASS, T, DT, nu=THERMO_NU)
+        if PROB > 0.0:
+            return core.thermostat_andersen(vv, MASS, T, prob=PROB)
         return vv
 
     t0 = time.time()
