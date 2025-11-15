@@ -37,7 +37,7 @@ from typing import Tuple
 #------------------------------------------------------------------
 #------------------------------------------------------------------
 # Global settings
-slab = False  # Global flag for slab vs bulk mode
+slab = True  # Global flag for slab vs bulk mode
 #------------------------------------------------------------------
 #------------------------------------------------------------------
 
@@ -159,7 +159,7 @@ def savefig(out_dir: str, stem: str):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--mode", type=str)
+    ap.add_argument("--mode", type=str, default = "slab" if slab else "bulk")
     ap.add_argument("--out_dir", type=str, default="C:/Users/Alex/OneDrive - Concordia University - Canada/phys440/project/Argon-LJ-simulation/figures/analyze", help="Output directory for plots and summary")
     ap.add_argument("--rc", type=float, default=2.5)
     ap.add_argument("--nbins", type=int, default=120)
@@ -170,8 +170,8 @@ def main():
 
 
 
-    thermo_path = "" if slab else ""
-    gro_path    = ""  if slab else ""
+    thermo_path = "C:/Users/Alex/OneDrive - Concordia University - Canada/phys440/project/Argon-LJ-simulation/data/thermo_slab.csv" if slab else "C:/Users/Alex/OneDrive - Concordia University - Canada/phys440/project/Argon-LJ-simulation/data/thermo_bulk.csv"
+    gro_path    = "C:/Users/Alex/OneDrive - Concordia University - Canada/phys440/project/Argon-LJ-simulation/data/argon_slab.gro" if slab else "C:/Users/Alex/OneDrive - Concordia University - Canada/phys440/project/Argon-LJ-simulation/data/argon_bulk.gro"
 
     # --- Load thermo and plot ---
     th = read_thermo_csv(thermo_path)

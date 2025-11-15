@@ -16,7 +16,7 @@ import LJ as core
 # =============================
 # Configuration (edit these)
 # =============================
-MODE = "bulk"      # "slab" or "bulk"
+MODE = "slab"      # "slab" or "bulk"
 
 # --- Slab parameters ---
 CELLS_X = 4        # FCC cells along x (slab)
@@ -40,7 +40,7 @@ SEED = None        # RNG seed (or None for random)
 
 # --- Sampling & output ---
 SAMPLE_EVERY = 5
-SAVE_DIR =    ""    # Output directory 
+SAVE_DIR =    "C:/Users/Alex/OneDrive - Concordia University - Canada/phys440/project/Argon-LJ-simulation/data"    # Output directory 
 SAVE_GRO = SAVE_DIR + ("argon_slab.gro" if MODE == "slab" else "argon_bulk.gro")
 SAVE_THERMO = SAVE_DIR + ("thermo_slab.csv" if MODE == "slab" else "thermo_bulk.csv")
 TITLE = f"Argon-{MODE}"
