@@ -51,9 +51,9 @@ FIG_DIR  = BASE_DIR / "figures"/ MODE.lower()
 
 
 # --- Analysis parameters ---
-NBINS    = 120        # number of bins for g(r)
+NBINS    = 200        # number of bins for g(r)
 DR       = 0.02       # bin width for g(r)
-MAXK     = 6          # max integer for |k| grid (S(k))
+MAXK     = 15        # max integer for |k| grid (S(k))
 INPLANE  = True       # for slab: use in-plane g(r) if True
 
 # Create directories if needed
@@ -64,7 +64,7 @@ mode = MODE.lower()
 title = f"Argon-{mode}"
 
 # 1) Run the MD simulation
-if False:
+if True:
     md_result = LJ.run_md(
         mode        = mode,
         cells_x     = CELLS_X,

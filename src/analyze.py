@@ -158,7 +158,7 @@ def analyze_trajectory(
     rc: float = 2.5,
     nbins: int = 120,
     dr: float = 0.02,
-    maxk: int = 6,
+    maxk: int = 15,
     inplane: bool = False,
 ):
     """
@@ -237,7 +237,7 @@ def analyze_trajectory(
     plt.figure()
     plt.plot(kmod, avsk)
     plt.xlabel("|k|")
-    plt.xlim(0, 6)
+    plt.xlim(0, maxk)
     plt.ylim(0,max(avsk)*1.1)
     plt.ylabel("S(|k|)")
     plt.title("Shell-averaged static structure factor")

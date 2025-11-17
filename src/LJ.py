@@ -111,6 +111,15 @@ def write_gro(path, pos, box, title="frame"):
             f.write(f"{1:5d}{'AR':>5s}{'Ar':>5s}{i:5d}{x:8.3f}{y:8.3f}{z:8.3f}\n")
         f.write(f"   {Lx:8.5f} {Ly:8.5f} {Lz:8.5f}\n")
 
+def write_gro_frame(f, pos, box, title="frame"):
+    """Write a single frame to an already-open .gro trajectory file."""
+    Lx, Ly, Lz = _as_box(box)
+    f.write(f"{title}\n")
+    f.write(f"{len(pos):5d}\n")
+    for i, (x, y, z) in enumerate(pos, start=1):
+        f.write(f"{1:5d}{'AR':>5s}{'Ar':>5s}{i:5d}{x:8.3f}{y:8.3f}{z:8.3f}\n")
+    f.write(f"   {Lx:8.5f} {Ly:8.5f} {Lz:8.5f}\n")
+
 
 #############################
 # State construction         #
@@ -431,23 +440,30 @@ def run_md(
     Lx, Ly, Lz_box = _as_box(box)
     print(f"[info] MODE={mode}  N={N}  box=({Lx:.3f}, {Ly:.3f}, {Lz_box:.3f})")
 
-    for step in range(steps):
-        r, v, disp, dist = advance(r, v, mass, dt, disp, dist, rc, box, slab_mode)
-        v = apply_thermostat(v)
+    # open trajectory file for multiple frames
+    traj_path = os.path.join(data_dir, f"argon_{mode}_traj.gro")
+    with open(traj_path, "w") as traj_file:
 
-        if step % sample_every == 0:
-            U = potential(dist, rc)
-            K = kinetic(mass, v)
-            times.append(step * dt)
-            epots.append(U)
-            ekins.append(K)
-            temps.append((2.0 * K) / (3.0 * N))
+        for step in range(steps):
+            r, v, disp, dist = advance(r, v, mass, dt, disp, dist, rc, box, slab_mode)
+            v = apply_thermostat(v)
 
-        if (step + 1) % next_progress == 0:
-            elapsed = time.time() - t0
-            Tinst = temps[-1] if temps else float("nan")
-            En = (epots[-1] + ekins[-1]) / N if epots else float("nan")
-            print(f"[{step+1:>7d}/{steps}] T={Tinst:.3f}  E/N={En:.3f}  elapsed={elapsed:.1f}s")
+            if step % sample_every == 0:
+                U = potential(dist, rc)
+                K = kinetic(mass, v)
+                times.append(step * dt)
+                epots.append(U)
+                ekins.append(K)
+                temps.append((2.0 * K) / (3.0 * N))
+
+                # write one frame to trajectory
+                write_gro_frame(traj_file, r, box, title=f"{title} step {step}")
+
+            if (step + 1) % next_progress == 0:
+                elapsed = time.time() - t0
+                Tinst = temps[-1] if temps else float("nan")
+                En = (epots[-1] + ekins[-1]) / N if epots else float("nan")
+                print(f"[{step+1:>7d}/{steps}] T={Tinst:.3f}  E/N={En:.3f}  elapsed={elapsed:.1f}s")
 
     print("[info] Run complete.")
 
