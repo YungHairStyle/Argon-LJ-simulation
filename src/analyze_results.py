@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """
+
+DO NOT USE THIS FILE IT IS DEPRECATED. USE ANALYZE.PY INSTEAD.
 analyze_results.py
 ==================
 Post-process LJ MD outputs for SLAB or BULK runs.
