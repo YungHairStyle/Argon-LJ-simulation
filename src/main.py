@@ -17,8 +17,8 @@ import analyze
 
 # --- Simulation mode ---
 #UNCOMMENT ONE OF THE FOLLOWING TWO TO SELECT THE  MODE ---
-#MODE = "slab"
-MODE = "bulk"
+MODE = "slab"
+#MODE = "bulk"
 
 # --- Slab parameters ---
 CELLS_X   = 4          # FCC cells along x (slab)
@@ -35,7 +35,7 @@ T         = 1.0        # temperature (reduced units)
 MASS      = 1.0        # particle mass
 RC        = 2.5        # LJ cutoff
 DT        = 0.004      # time step
-STEPS     = 6000       # total MD steps
+STEPS     = 20000       # total MD steps
 EQUIL_STEPS = 1000     # steps considered "equilibration" for averages
 PROB      = 0.02        # Andersen collision probability (0 disables thermostat)
 SEED      = None       # RNG seed (None = random)
