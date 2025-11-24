@@ -15,8 +15,8 @@ import slab_structure_analysis  # NEW: Import the slab-specific analysis
 # =============================
 # --- Simulation mode ---
 #UNCOMMENT ONE OF THE FOLLOWING TWO TO SELECT THE  MODE ---
-MODE = "slab"
-#MODE = "bulk"
+#MODE = "slab"
+MODE = "bulk"
 
 # --- Slab parameters ---
 CELLS_X   = 4          # FCC cells along x (slab)
@@ -32,14 +32,14 @@ A         = 1.78       # FCC lattice parameter
 T         = 1.0        # temperature (reduced units)
 MASS      = 1.0        # particle mass
 RC        = 2.5        # LJ cutoff
-DT        = 0.004      # time step
-STEPS     = 7000      # total MD steps
+DT        = 0.02      # time step
+STEPS     = 6000      # total MD steps
 EQUIL_STEPS = 1000     # steps considered "equilibration" for averages
 PROB      = 0.02       # Andersen collision probability (0 disables thermostat)
 SEED      = None       # RNG seed (None = random)
 
 # --- Sampling ---
-SAMPLE_EVERY = 5       # sample every N steps for thermo output
+SAMPLE_EVERY = 10       # sample every N steps for thermo output
 
 # --- Paths (where to read/write) ---
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -66,7 +66,7 @@ mode = MODE.lower()
 title = f"Argon-{mode}"
 
 # 1) Run the MD simulation
-if True:
+if False:
     md_result = LJ.run_md(
         mode        = mode,
         cells_x     = CELLS_X,
@@ -99,7 +99,7 @@ if True:
         nbins   = NBINS,
         dr      = DR,
         maxk    = MAXK,
-        inplane = False,  # We'll handle slab specially below
+        inplane = False, 
     )
     
     # --- Structural analysis: Choose method based on mode ---
@@ -109,9 +109,9 @@ if True:
         current_n_atoms = 4 * CELLS_BULK**3
         current_l_ref   = CELLS_BULK * A
         
-        # For bulk: use the original structure_analysis
+        # --- A) Existing Standard Bulk Analysis ---
         print("\n" + "="*60)
-        print("RUNNING BULK STRUCTURAL ANALYSIS (t=0 and t_final)")
+        print("RUNNING BULK STRUCTURAL ANALYSIS (Standard 3D)")
         print("="*60 + "\n")
         
         structure_analysis.analyze_structural_only(
@@ -125,6 +125,30 @@ if True:
             inplane = False,
             n_atoms = current_n_atoms,
             l_ref   = current_l_ref
+        )
+
+        # --- B) NEW: Run Slab Slicing on Bulk (Method Comparison) ---
+        # We create a sub-folder so these plots don't overwrite the standard ones
+        SLICE_CHECK_DIR = FIG_DIR / "slicing_method_check"
+        os.makedirs(SLICE_CHECK_DIR, exist_ok=True)
+
+        print("\n" + "-"*60)
+        print("RUNNING SLICING CHECK ON BULK (2D Slicing vs 3D Standard)")
+        print("-"*60 + "\n")
+
+        slab_structure_analysis.analyze_slab_with_slicing(
+            mode            = mode,   # distinct name for plot titles
+            data_dir        = DATA_DIR,
+            out_dir         = SLICE_CHECK_DIR, # save in separate folder
+            n_atoms         = current_n_atoms,
+            l_ref           = current_l_ref,   # Box length acts as Lz here
+            rc              = RC,
+            nbins           = NBINS,
+            dr              = DR,
+            maxk            = MAXK,
+            slice_thickness = SLICE_THICKNESS,
+            # Check center (0.0) and one random offset (2.0) to prove isotropy
+            offsets         = [0.0, 2.0]       
         )
         
     else:  # mode == "slab"
@@ -147,5 +171,5 @@ if True:
             dr              = DR,
             maxk            = MAXK,
             slice_thickness = SLICE_THICKNESS,
-            offsets         = SLICE_OFFSETS  # <--- PASS THE OFFSETS HERE
+            offsets         = SLICE_OFFSETS 
         )
